@@ -12,8 +12,8 @@ fs, x = wav.read(file)
 x = x.reshape((len(x),-1))
 x = 0.99*x/np.max(x);
 
-# General parameters
-[T, I] = x.shape;
+# General paramete
+[T, I] = x.shape; 
 J = 3; # number of sources
 sigma2_n = 0.01*np.ones((I,1)); # noise variance
 

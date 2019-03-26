@@ -90,10 +90,10 @@ def convFFT(x,y, axis=0):
     z_pow2 = np.ceil(np.log2(z_len))
     fft_len = np.int(2**z_pow2)
 
-    X = np.fft.fft(x, fft_len, axis=axis)
-    Y = np.fft.fft(y, fft_len, axis=axis)
-    z = np.imag(np.fft.ifft(X*Y, fft_len, axis=axis))
-    
+    X = np.fft.rfft(x, fft_len, axis=axis)
+    Y = np.fft.rfft(y, fft_len, axis=axis)
+    z = np.fft.rifft(X*Y, fft_len, axis=axis)
+
     if axis==0:
         z = z[:z_len,:]
     else:
