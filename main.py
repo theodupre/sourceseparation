@@ -13,7 +13,7 @@ x = x.reshape((len(x),-1))
 x = 0.99*x/np.max(x);
 
 # General paramete
-[T, I] = x.shape; 
+[T, I] = x.shape;
 J = 3; # number of sources
 sigma2_n = 0.01*np.ones((I,1)); # noise variance
 
@@ -30,16 +30,17 @@ Ls = T - La + 1; # length of source signal
 alpha_v = 100; # Student's t shape source parameter
 wlen = [2048, 2048, 2048]; # window lengths for MDCT [drums, voice, bass]
 K = 10; # NMF rank
-num_iter = 100; # number of iteration for NMF optimization
+num_iter = 100; # number of iteSettingsration for NMF optimization
 W = []; # spectral templates
 H = []; # activation matrices
 #
 ## Zero padding do handle edges
-xpad = np.zeros((x.shape[0] + 2*wlen[0] - x.shape[0]%wlen[0],I));
-for i in range(I):
-    zeroPad_end = np.zeros((wlen[i] - x.shape[0]%wlen[i] + wlen[i]/2));
-    zeroPad_beg = np.zeros((wlen[i]/2));
-    xpad[:,i] = np.concatenate((zeroPad_beg,x[:,i],zeroPad_end), axis=0);
+
+hop = wlen[0]/2.
+zeroPad_end = np.zeros(((np.ceil(Ls/hop)*hop - Ls + hop).astype(int),I));
+zeroPad_beg = np.zeros((int(hop),I));
+xpad= np.concatenate((zeroPad_beg,x,zeroPad_end), axis=0);
+
 
 for j in range(J):
 
@@ -80,6 +81,7 @@ for j in range(J):
 # plt.colorbar()
 # plt.subplot(1,2,2)
 # plt.imshow(H/np.max(H), aspect='auto', interpolation='none')
+
 # plt.colorbar()
 # plt.figure()
 # plt.subplot(2,1,1)
@@ -96,11 +98,11 @@ for j in range(J):
 init = VEM(fs, xpad, alpha_u, alpha_v, sigma2_n, r2, W, H, wlen);
 #init.updateV()
 #init.updateU()
-#init.updateS()# t = np.linspace(0,T/fs,T);
+init.updateS()# t = np.linspace(0,T/fs,T);
 #init.updateA()
 #init.updateLambda()
 Error = init.computeExpectError();
-print(Error)
+# print(Error)
 # plt.plot(x1)
 # plt.plot(x_hat, 'g--')
 # plt.show()

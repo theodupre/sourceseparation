@@ -50,6 +50,7 @@ class VEM:
         self.J = len(self.W);
         self.La = self.alpha_u.shape[0];
         self.Ls = self.T - self.La + 1;
+        print(self.Ls)
         self.wlen = wlen;
         self.F = [];
         self.N = [];
@@ -100,17 +101,15 @@ class VEM:
                 self.rho[i,j] = rho_ij;
                 self.a_hat[i,j] = np.random.randn(self.La)*rho_ij;
 
-        self.G = []
-        for j in range(self.J):
-            G_j = np.zeros((self.I,self.F[j],self.La + self.wlen[j] - 1))
-            self.G.append(G_j)
+        self.G = np.zeros((self.I, self.J*self.F[0],self.wlen[0] + self.La - 1))
+
 
         self.compute_G();
         self.computePhiCorr();
         self.computeSourceSignal();
         self.computeSourceImageSignal();
         print('phicorr', self.phiCorr[0].shape)
-        print('G', self.G[0].shape)
+        print('G', self.G.shape)
 
     ## E-V step
     def updateV(self):
@@ -127,11 +126,10 @@ class VEM:
     def updateS(self):
         ##  Update gamma
         for j in range(self.J):
-            norm2_g = np.sum(self.G[j]**2, axis=2)
+            norm2_g = np.sum(self.getGj(j)**2, axis=2)
             sum_rho = np.sum(self.rho[:,j,:], axis=1). reshape(-1,1)
             sum_i = np.sum(1/(self.sigma2_n + self.eps)*(sum_rho + norm2_g), axis=0).reshape(-1,1)
             self.gamma[j] = self.nu_v/(self.beta[j]*self.lambda2[j] + self.eps) + sum_i
-
 
         ## Update s with pcg algorithm
         # Solving [LAMBDA]s = GX
@@ -142,16 +140,17 @@ class VEM:
         for j in range(self.J):
             hop = self.wlen[j]/2
             frameInd_j = np.zeros((self.wlen[j] + self.La - 1, self.N[j]))
-            print('n_max', np.max(self.N[j]))
             for n in range(self.N[j]):
                 frameInd_j[:,n] = np.arange(n*hop, n*hop + self.wlen[j] + self.La - 1)
             frameInd.append(frameInd_j);
-            GX = np.zeros((self.wlen[j] + self.La - 1, self.N[j], self.I))
+            GX = np.zeros((self.I, self.F[j], self.N[j]))
+            print(self.G[0].shape)
             for i in range(self.I):
                 X_i = self.x[:,i]/(self.sigma2_n[i] + self.eps);
-                print(X_i.shape, frameInd[j][:,-1:])
-                GX[:,:,i] = np.dot(self.G[j][i,:,:], X_i[frameInd[j].astype(int)])
-            sum_GX.append(np.sum(GX, axis=2).flatten());
+                print(X_i.shape, frameInd[j][-1,-1])
+                GX[i,:,:] = np.dot(self.getGj(j)[i,:,:], X_i[frameInd[j].astype(int)])
+            sum_GX.append(np.sum(GX, axis=0).flatten())
+        print(sum_GX[0].shape)
 
         # LAMBDA
         inv_sigma_rho = []
@@ -277,7 +276,7 @@ class VEM:
 
             tmp = np.zeros(self.J);
             for j in range(self.J):
-                tmp_val= (np.sum(self.G[j][i,:,:]**2, axis=1) + np.sum(self.rho[i,j,:])).reshape(-1,1)
+                tmp_val= (np.sum(self.getGj(j)[i,:,:]**2, axis=1) + np.sum(self.rho[i,j,:])).reshape(-1,1)
                 tmp[j] = np.sum(np.sum(self.gamma[j] * tmp_val));
             sum_gamma_g_rho = np.sum(tmp)
 
@@ -285,17 +284,37 @@ class VEM:
 
         return expectError
 
+    def compute_g_ijfn(self, i, j, f, n):
+        philen = self.wlen[0]
+        phi_fn = self.getMDCTAtom(f, n, philen, self.wlen[0]).reshape(1,-1)
+        a_ij = self.a_hat[i,j,:]
+        if type(i) == int:
+            g_ijfn = convFFT(phi_fn, a_ij)
+        else:
+            g_ijfn = convFFT(np.dot(np.ones((len(i),1)),phi_fn),a_ij, axis=1)
+        # n_0 = n*self.wlen[0]/2
+        # g_ijfn = g_ijfn[n_0:n_0 + self.wlen[0] + self.La -1]
+
+        return g_ijfn
 
     def compute_G(self):
-
+        # for i in range(self.I):
+        k = 0
         for j in range(self.J):
-            t = [i+0.5 for i in range(self.wlen[j])];
-            t = np.array((t));
-            win = np.sin((t*np.pi/self.wlen[j]));
-            a_temp = self.a_hat[:,j,:]
+                # t = [i+0.5 for i in range(self.wlen[j])];
+                # t = np.array((t));
+                # win = np.sin((t*np.pi/self.wlen[j]));
+                # a_temp = self.a_hat[:,j,:]
             for f in range(self.F[j]):
-                phi_f = win*(np.sqrt(4/self.F[j])*np.cos((f + 0.5) * (t + 0.5 + self.wlen[j]/4)))
-                self.G[j][:,f,:] = convFFT(np.dot(np.ones((self.I,1)), phi_f.reshape(1,-1)),a_temp, axis=1)
+                # phi_nf = win*(np.sqrt(4/self.F[j])*np.cos((f + 0.5) * (t + 0.5 + self.wlen[j]/4)))
+                    # self.G[j][:,f,:] = convFFT(np.dot(np.ones((self.I,1)), phi_f.reshape(1,-1)),a_temp, axis=1)
+                self.G[:,k,:] = self.compute_g_ijfn(np.arange(self.I),j,f,0)
+                k += 1
+
+    def getGj(self,j):
+        ## To change when wlen[j] != wlen[j-1]
+        Gj = self.G[:,j*self.F[j]:j*self.F[j] + self.F[j],:]
+        return Gj
 
     def computeSourceSignal(self):
 
