@@ -51,35 +51,45 @@ def nmf_mdct(V, alpha_v, W_init, H_init, num_iter):
 
 def mdct(x, wlen):
     m = np.arange(wlen);
-    win = np.sin((m*np.pi/(wlen - 1)));
 
-    F = wlen/2; # frequency bins
-    H = wlen/2; # hop size
-
-    # padding x to wlen
-    zeroPad_end = np.zeros((wlen - x.shape[0]%wlen + wlen/2,1));
-    zeroPad_beg = np.zeros((wlen/2,1));
-    xpad = np.concatenate((zeroPad_beg,x,zeroPad_end), axis=0);
-    N = xpad.shape[0]/H - 1;
-    X = np.zeros((F,N));
+    win = np.sin(((m + 0.5)*np.pi/wlen));
+    F = int(wlen/2); # frequency bins
+    H = F; # hop size
+    N = int(x.shape[0]/H - 1);
+    frameInd = np.zeros((wlen,N), dtype=int)
     for n in range(N):
-        print(n, win.shape)
-        x_win = xpad[n*H:n*H+wlen,0]*win;
-        for f in range(F):
-            X[f,n] = np.sum(x_win*np.cos(np.pi/(2*wlen)*(2*m + 1 + wlen/2)*(2*f + 1)));
+        frameInd[:,n] = n*H + np.arange(wlen)
+    X = np.zeros((F,N));
+
+    T = np.zeros((F,wlen))
+    for f in range(F):
+
+        T[f,:] = win*np.sqrt(4/wlen)*np.cos(2*np.pi/wlen*(m + 0.5 + wlen/4)*(f + 0.5))
+
+    X = np.dot(T,np.squeeze(x[frameInd]))
+
     return X
+
 
 def imdct(X, xlen):
     wlen = X.shape[0]*2;
     N = X.shape[1];
-    n = np.arange(wlen);
-    win = np.sin((n*np.pi/(wlen - 1)));
-    F = wlen/2; # frequency bins
-    x = np.zeros((xlen,1));
-    m = np.arange(wlen/2);
+    m = np.arange(wlen);
+    win = np.sin(((m + 0.5)*np.pi/wlen));
+    F = int(wlen/2); # frequency bins
+    H = F
+    x = np.zeros(xlen);
+
+    T = np.zeros((F,wlen))
+    for f in range(F):
+        T[f,:] = win*np.sqrt(4/wlen)*np.cos((f + 0.5)*(m + 0.5 + wlen/4)*2*np.pi/wlen)
+
+    frames = np.dot(T.T,X)
+    frameInd = np.zeros((F,N))
     for n in range(N):
-        for p in range(wlen):
-            x[n*wlen/2 + p] += win[p]*4/wlen*np.sum(X[:,n]*np.cos(np.pi/(2*wlen)*(2*p + 1 + wlen/2)*(2*m + 1)))
+        frameInd = n*H + np.arange(wlen, dtype=int)
+        x[frameInd] = x[frameInd] + frames[:,n]
+
     return x
 
 def convFFT(x,y, axis=0):
@@ -108,3 +118,12 @@ def xcorr(x, y, length):
     corr = tmp[n_0:n_0+length]
 
     return corr
+
+def zeroPad(x, Ls, hop):
+
+    I = x.shape[1]
+    zeroPad_end = np.zeros(((np.ceil(Ls/hop)*hop - Ls + hop).astype(int),I));
+    zeroPad_beg = np.zeros((int(hop),I));
+    xpad= np.concatenate((zeroPad_beg,x,zeroPad_end), axis=0);
+
+    return xpad

@@ -1,8 +1,8 @@
 import numpy as np
 import scipy.io.wavfile as wav
 from VEM import VEM
-from utility_functions import mdct,imdct,nmf_mdct,convFFT
-# import matplotlib.pyplot as plt
+from utility_functions import *
+import matplotlib.pyplot as plt
 import time
 
 
@@ -37,34 +37,23 @@ H = []; # activation matrices
 ## Zero padding do handle edges
 
 hop = wlen[0]/2.
-zeroPad_end = np.zeros(((np.ceil(Ls/hop)*hop - Ls + hop).astype(int),I));
-zeroPad_beg = np.zeros((int(hop),I));
-xpad= np.concatenate((zeroPad_beg,x,zeroPad_end), axis=0);
+xpad = zeroPad(x, Ls, hop)
 
 
 for j in range(J):
+    filename = 'sounds/shorter_files/src' + str(j+1) + '.wav';
+    _, s = wav.read(filename);
+    s = s.reshape((len(s),-1))
+    s = zeroPad(s, Ls, hop)
+    S = mdct(s, wlen[j]);
 
-    W.append(np.load('data/shorter_files/W_init_' + str(j+1) + '.npy'))
-    H.append(np.load('data/shorter_files/H_init_' + str(j+1) + '.npy'))
-# start_time = time.time()
-# initialization Wj dictionaries using NMF on already isolated sources
-# for j in range(J):
-#     filename = 'sounds/shorter_files/src' + str(j+1) + '.wav';
-#     _, s = wav.read(filename);
-#     s = s.reshape((len(s),-1))
-#     S = mdct(s, wlen[j]);
-#
-#     [F,N] = S.shape;
-#     W_init = 0.5 * (np.abs(np.random.randn(F,K) + np.ones((F,K)))*np.dot(np.mean(np.abs(S)**2, axis=1).reshape((-1,1)),np.ones((1,K))))
-#     H_init = 0.5*(np.abs(np.random.randn(K,N) + np.ones((K,N))));
-#     print(W_init.shape, H_init.shape)
-#     Wj,_,_ = nmf_mdct(np.abs(S)**2, alpha_v, W_init, H_init, num_iter)
-#
-#     np.save('data/shorter_files/W_init_' + str(j+1) + '.npy', Wj)
-#     np.save('data/shorter_files/H_init_' + str(j+1) + '.npy', H_init)
-#
-#     W.append(Wj);
-#     H.append(H_init); # H matrices will be estimated blindly
+    [F,N] = S.shape;
+    W_init = 0.5 * (np.abs(np.random.randn(F,K) + np.ones((F,K)))*np.dot(np.mean(np.abs(S)**2, axis=1).reshape((-1,1)),np.ones((1,K))))
+    H_init = 0.5*(np.abs(np.random.randn(K,N) + np.ones((K,N))));
+    Wj,_,_ = nmf_mdct(np.abs(S)**2, alpha_v, W_init, H_init, num_iter)
+
+    W.append(Wj);
+    H.append(H_init); # H matrices will be estimated blindly
 
 # print()
 
@@ -95,18 +84,38 @@ for j in range(J):
 #plt.matshow(abs(X), origin='upper',cmap='gray');
 #plt.show();
 # #x_hat = imdct(np.abs(X));
+print('Initialization of VEM algorithm...')
 init = VEM(fs, xpad, alpha_u, alpha_v, sigma2_n, r2, W, H, wlen);
-#init.updateV()
-#init.updateU()
-init.updateS()# t = np.linspace(0,T/fs,T);
-#init.updateA()
-#init.updateLambda()
-Error = init.computeExpectError();
-# print(Error)
+niter = 10
+for n in range(niter):
+    print('VEM iteration ', n,' of ', niter)
+    print('E-V step..')
+    init.updateV()
+    print('E-U step..')
+    init.updateU()
+    print('E-S step..')
+    init.updateS()
+    print('E-A step..')
+    init.updateA()
+    print('M-NMF step..')
+    init.updateLambda()
+    print('M-noise step..')
+    init.computeExpectError()
+    init.updateNoiseVar()
+# # print(Error)
 # plt.plot(x1)
 # plt.plot(x_hat, 'g--')
 # plt.show()
-# x_test = x[:,0].reshape(-1,1)
-# print(x_test.shape)
-# x_exp = imdct(mdct(x_test,2048),x_test.shape[0])
-# print(x_exp.shape)
+# x_test = xpad[:,0].reshape(-1,1)
+# print(x_test)
+# # plt.plot(x_test)
+# X = mdct(x_test, 2048)
+# # plt.plot(X[:,10])
+# # print(X[:,10])
+# x_exp = imdct(X,x_test.shape[0])
+# # print(x_exp.shape)
+# #plt.imshow(X**2, aspect='auto', interpolation='none')
+# # x = x_test.flatten() - x_exp
+# # plt.plot(x_test)
+# # plt.plot(x_exp)
+# # plt.show()
