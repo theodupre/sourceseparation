@@ -21,8 +21,8 @@ def nmf_mdct(V, alpha_v, W_init, H_init, num_iter):
     for i in range(num_iter):
 
         # Multiplicative update for H
-        W_num = np.dot((np.dot(W,H) + eps)**(-2)*P,np.transpose(H));
-        W_det = np.dot((np.dot(W,H) + eps)**(-1),np.transpose(H)) + eps;
+        W_num = np.dot((WH)**(-2)*P,np.transpose(H)) + eps;
+        W_det = np.dot((WH)**(-1),np.transpose(H)) + eps;
         W = W*W_num/W_det;
 
         # Normalization
@@ -36,8 +36,8 @@ def nmf_mdct(V, alpha_v, W_init, H_init, num_iter):
 
         P = 1/((alpha_v*(V + eps)**(-1) + (WH + eps)**(-1))/(alpha_v + 1))
 
-        H_num = np.dot(np.transpose(W),(np.dot(W,H) + eps)**(-2)*P);
-        H_det = np.dot(np.transpose(W),(np.dot(W,H) + eps)**(-1)) + eps;
+        H_num = np.dot(np.transpose(W),(WH)**(-2)*P) + eps;
+        H_det = np.dot(np.transpose(W),(WH)**(-1)) + eps;
         H = H*H_num/H_det;
 
         WH = np.dot(W,H) + eps;
@@ -49,9 +49,12 @@ def nmf_mdct(V, alpha_v, W_init, H_init, num_iter):
     return W, H, Error
 
 
-def mdct(x, wlen):
-    m = np.arange(wlen);
+def mdct(x, wlen, zeropad=0):
+    if zeropad != 0:
 
+        x = zeroPad(x, len(x), 1024)
+
+    m = np.arange(wlen);
     win = np.sin(((m + 0.5)*np.pi/wlen));
     F = int(wlen/2); # frequency bins
     H = F; # hop size
@@ -120,7 +123,7 @@ def xcorr(x, y, length):
     return corr
 
 def zeroPad(x, Ls, hop):
-
+    x = x.reshape(x.shape[0],-1)
     I = x.shape[1]
     zeroPad_end = np.zeros(((np.ceil(Ls/hop)*hop - Ls + hop).astype(int),I));
     zeroPad_beg = np.zeros((int(hop),I));
