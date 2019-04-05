@@ -114,9 +114,22 @@ def convFFT(x,y, axis=0):
 
     return z
 
-def xcorr(x, y, length):
+def xcorr(x, y, length, zeroPad=False):
 
-    tmp = correlate(x,y,mode='same')
+    if zeroPad:
+        x_len = len(x)
+        y_len = len(y)
+        zeros = int(np.abs(np.floor((x_len - y_len))))
+        if x_len > y_len:
+            # y = np.concatenate((np.zeros(zeros), y.flatten(), np.zeros(zeros)))
+            y = np.concatenate((y.flatten(),np.zeros(zeros)))
+            x = x.flatten()
+        else:
+            # x = np.concatenate((np.zeros(zeros), x.flatten(), np.zeros(zeros)))
+            x = np.concatenate((np.zeros(zeros), x.flatten()))
+            y = y.flatten()
+
+    tmp = correlate(x,y,mode='full')
     n_0 = np.int(np.floor(len(tmp)/2))
     corr = tmp[n_0:n_0+length]
 

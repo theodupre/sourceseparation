@@ -13,6 +13,7 @@ fs, x = wav.read(file)
 x = x.reshape((len(x),-1))
 x = 0.99*x/np.max(x);
 
+
 # General paramete
 [T, I] = x.shape;
 J = 3; # number of sources
@@ -29,7 +30,6 @@ tau = T60*fs/(3*np.log(10)); # exponenetial decay rate of mixing filters
 t = np.arange(La); # timeline in s of a mixing filter
 r2 = 0.1**2*np.exp(-2*t/tau); # incomplete variance of mixing filter coefficients
 
-
 # Source parameters
 Ls = T - La + 1; # length of source signal
 alpha_v = 100; # Student's t shape source parameter
@@ -40,7 +40,6 @@ W = []; # spectral templates
 H = [np.ones((10,35))] * J; # activation matrices
 
 ## Zero padding do handle edges
-
 hop = wlen[0]/2.
 xpad = zeroPad(x, Ls, hop)
 
@@ -88,43 +87,38 @@ varFreeEnergy[0] = init.varFreeEnergy/(init.T*init.I)
 
 for n in range(niter):
     print('VEM iteration ', n,' of ', niter)
+
     print('E-V step..')
     init.updateV()
-    # # init.computeVFE()
-    # # print('VFE : ',init.varFreeEnergy/(init.T*init.I))
-    # # init.computeVFE()
-    # # print('VFE : ',init.varFreeEnergy/(init.T*init.I))
+
     print('E-S step..')
     init.updateS()
-    # # # init.computeVFE()
-    # # ## print('VFE : ',init.varFreeEnergy/(init.T*init.I))
-    # print('E-A step..')
-    # init.updateA()
+
     print('E-U step..')
     init.updateU()
-    # # init.computeVFE()
-    # # print('VFE : ',init.varFreeEnergy/(init.T*init.I))
+
+    # print('E-A step..')
+    # init.updateA()
+
     print('M-NMF step..')
     init.updateLambda()
-    # # init.computeVFE()
-    # # print('VFE : ',init.varFreeEnergy/(init.T*init.I))
+
     print('M-noise step..')
     init.updateNoiseVar()
+
     init.computeVFE()
     varFreeEnergy[n + 1] = init.varFreeEnergy/(init.T*init.I)
     print('VFE : ',init.varFreeEnergy/(init.T*init.I))
 
+    if np.mod(n,10) == 0:
+        for j in range(J):
+            wav.write('sounds/shorter_files/results/res_source_' + str(n + 1) + '_' + str(j+1) + '.wav', fs, init.sig_source[j,:])
 plt.plot(varFreeEnergy)
 plt.show()
-Ls = 34240;
-se = np.zeros((Ls,J))
 
-for j in range(J):
 
-    # se[:,j] = imdct(init.s_hat[j], Ls)
-    plt.plot(init.sig_source[j,:])
-    wav.write('sounds/shorter_files/res_source' + str(j+1) + '.wav', fs, init.sig_source[j,:])
-    plt.show()
+
+
 
 
 # # print(Error)

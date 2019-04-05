@@ -135,11 +135,20 @@ class VEM:
         #savemat('/cal/exterieurs/atiam6576/Téléchargements/code-SSMM-MASS-2017/data/phiCorr.mat', mdict={'phiCorr': self.phiCorr})
 
         self.computeSourceSignal();
+        # print(self.sig_source)
         savemat('/cal/exterieurs/atiam6576/Téléchargements/code-SSMM-MASS-2017/data/sig_s.mat', mdict={'sig_s': self.sig_source})
-        #savemat('/cal/exterieurs/atiam6576/Téléchargements/code-SSMM-MASS-2017/data/s_hat.mat', mdict={'s_hat': self.s_hat})
-
+        # #savemat('/cal/exterieurs/atiam6576/Téléchargements/code-SSMM-MASS-2017/data/s_hat.mat', mdict={'s_hat': self.s_hat})
+        # W_init = loadmat('data/s.mat');
+        # s = W_init['s']
+        # self.sig_source = s.T
+        # print(self.sig_source)
         self.computeSourceImageSignal();
-        savemat('/cal/exterieurs/atiam6576/Téléchargements/code-SSMM-MASS-2017/data/s_im.mat', mdict={'s_im': self.s_im})
+        # savemat('/cal/exterieurs/atiam6576/Téléchargements/code-SSMM-MASS-2017/data/s_im.mat', mdict={'s_im': self.s_im})
+        # W_init = loadmat('data/sim.mat');
+        # sim = W_init['sim'];
+        # self.s_im = sim.T
+        # print(self.s_im)
+        # print(self.s_im.shape)
     ## E-V step
     def updateV(self):
         for j in range(self.J):
@@ -256,11 +265,7 @@ class VEM:
     ## E-A step
     def updateA(self):
 
-        # update source_signal
-        self.computeSourceSignal();
-
         # update rho
-
         for j in range(self.J):
             sum_gamma = np.sum(np.sum(self.gamma[j]));
             norm2_s = np.sum(self.sig_source[j,:]**2);
@@ -284,6 +289,7 @@ class VEM:
                 phiCorr_t = self.phiCorr[j][:,t].reshape(-1,1)
                 phiCorr_t = np.tile(phiCorr_t, [self.N[j],1])
                 gam_r[t,j] = np.dot(phiCorr_t.T, gamma_jfn.flatten())
+
             for i in range(self.I):
                 toep_diag[i,j,:] = 1/self.sigma2_n[i]*(r_ss[j] + gam_r[:,j])
                 toeplitz_mat[i,j,:,:] = toeplitz(toep_diag[i,j,:])
@@ -296,22 +302,55 @@ class VEM:
             for i in range(self.I):
 
                 # Lambda_a
-                tmp = (self.d[i,j,:]*self.r2).flatten()
-                diag = np.diag(self.nu_u.flatten()/tmp)
+                tmp = self.nu_u.flatten()/(self.d[i,j,:]*self.r2).flatten()
+                diag = np.diag(tmp)
                 lambda_a[i,j,:,:] = diag + toeplitz_mat[i,j,:,:]
 
                 # epsilon_ij et r_se/sigma2_n
-                sum_y_ij = np.sum(self.s_im[i,:,:], axis=0) - self.s_im[i,j,:]
+                y_ij_index = np.delete(np.arange(self.J),j)
+                sum_y_ij = np.sum(self.s_im[i,y_ij_index,:], axis=0)
+
                 epsilon_ij[i,j,:] = self.x[:,i] - sum_y_ij
-                r_se[i,j,:] = 1/self.sigma2_n[i]*xcorr(self.sig_source[j,:].reshape(-1,1), epsilon_ij[i,j,:].reshape(-1,1), self.La).flatten()
+                tmp = np.flip(xcorr(self.sig_source[j,:].reshape(-1,1), epsilon_ij[i,j,:].reshape(-1,1), self.La, zeroPad=True))
 
-                precondA_hat = np.diag(1/np.diag(lambda_a[i,j,:,:]))
+                r_se[i,j,:] = 1/self.sigma2_n[i]*tmp.flatten()
 
-                ## Compute preconditionned conjugate gradient descent
-                self.a_hat[i,j,:],conv = cg(lambda_a[i,j,:,:], r_se[i,j,:].reshape(-1,1), M=precondA_hat, maxiter=10)
+                grad_ij = np.matmul(lambda_a[i,j,:,:],self.a_hat[i,j,:]) - r_se[i,j,:]
 
+                w_ij = self.rho[i,j,:]*grad_ij
+
+                niter = 10
+
+                for iter in range(niter):
+
+                    kappa_ij = np.matmul(lambda_a[i,j,:,:],w_ij)
+
+                    mu = np.dot(w_ij.T,grad_ij)/np.dot(w_ij.T,kappa_ij)
+                    if mu<0:
+                        mu = self.eps
+
+                    self.a_hat[i,j,:] = self.a_hat[i,j,:] - mu*w_ij
+
+                    if iter == niter:
+                        break
+
+                    grad_ij = np.matmul(lambda_a[i,j,:,:],self.a_hat[i,j,:]) - r_se[i,j,:]
+
+                    gradP_ij = self.rho[i,j,:]*grad_ij
+
+                    alpha_pcg = - np.dot(kappa_ij.T,gradP_ij)/np.dot(w_ij.T,kappa_ij)
+                    if alpha_pcg<0:
+                        alpha_pcg = self.eps
+
+                    w_ij = gradP_ij + alpha_pcg*w_ij
+
+                # precondA_hat = np.diag(1/np.diag(lambda_a[i,j,:,:]))
+                #
+                # ## Compute preconditionned conjugate gradient descent
+                # self.a_hat[i,j,:],conv = cg(lambda_a[i,j,:,:], r_se[i,j,:].reshape(-1,1), M=precondA_hat, maxiter=10)
+                # print(self.a_hat[i,j,:])
             # update srcimage
-            self.computeSourceImageSignal()
+            self.computeSourceImageSignal(j)
 
         # update G
         self.compute_G_simon()
@@ -365,15 +404,18 @@ class VEM:
 
         for i in range(self.I):
             norm_x_y = np.sum((self.x[:,i] - np.sum(self.s_im[i,:,:], axis=0))**2)
+            print(self.s_im[i,:,:])
             norm_s_rho = np.sum(np.sum(self.sig_source**2, axis=1)*np.sum(self.rho[i,:,:], axis=1))
+            print(self.sig_source)
             tmp = np.zeros(self.J);
+
             for j in range(self.J):
                 normG = np.sum(self.G[j][:,:,i]**2, axis=1)
                 tmp_val= (normG + np.sum(self.rho[i,j,:])).reshape(-1,1)
                 tmp[j] = np.sum(np.sum(self.gamma[j] * tmp_val));
             sum_gamma_g_rho = np.sum(tmp)
             self.expectError[i] = norm_x_y + norm_s_rho + sum_gamma_g_rho
-            # print(self.expectError[i])
+            print(self.expectError[i])
 
     def computeVFE(self):
 
@@ -446,11 +488,14 @@ class VEM:
             sig_j = imdct(self.s_hat[j], self.Ls)
             self.sig_source[j,:] = sig_j.flatten()
 
-    def computeSourceImageSignal(self):
-
-        for i in range(self.I):
-            for j in range(self.J):
-                self.s_im[i,j,:] = convFFT(self.a_hat[i,j,:].reshape(-1,1), self.sig_source[j,:].reshape(-1,1)).flatten()
+    def computeSourceImageSignal(self, j=None):
+        if j != None:
+            for i in range(self.I):
+                self.s_im[i,j,:] = np.convolve(self.a_hat[i,j,:], self.sig_source[j,:]).flatten()
+        else:
+            for i in range(self.I):
+                for j in range(self.J):
+                    self.s_im[i,j,:] = np.convolve(self.a_hat[i,j,:], self.sig_source[j,:]).flatten()
 
     def computeWFilt(self, w):
 
