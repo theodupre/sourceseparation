@@ -15,7 +15,6 @@ def nmf_mdct(V, alpha_v, W_init, H_init, num_iter):
     WH = np.dot(W,H) + eps;
 
     P = 1/((alpha_v*(V + eps)**(-1) + (WH + eps)**(-1))/(alpha_v + 1))
-    #P = V + eps;
     S = np.sum(P)
 
     for i in range(num_iter):
@@ -121,11 +120,9 @@ def xcorr(x, y, length, zeroPad=False):
         y_len = len(y)
         zeros = int(np.abs(np.floor((x_len - y_len))))
         if x_len > y_len:
-            # y = np.concatenate((np.zeros(zeros), y.flatten(), np.zeros(zeros)))
             y = np.concatenate((y.flatten(),np.zeros(zeros)))
             x = x.flatten()
         else:
-            # x = np.concatenate((np.zeros(zeros), x.flatten(), np.zeros(zeros)))
             x = np.concatenate((np.zeros(zeros), x.flatten()))
             y = y.flatten()
 

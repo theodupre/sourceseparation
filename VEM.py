@@ -42,7 +42,6 @@ class VEM:
 
         self.fs = fs; # sample_rate
         self.x = x;
-        savemat('/cal/exterieurs/atiam6576/Téléchargements/code-SSMM-MASS-2017/data/x.mat', mdict={'x': self.x})
 
         self.alpha_u = alpha_u;
         self.alpha_v = alpha_v;
@@ -57,25 +56,23 @@ class VEM:
         self.La = int(self.alpha_u.shape[0]);
         self.Ls = int(self.T - self.La + 1);
         self.wlen = wlen;
-        self.F = [None]*self.J;
-        self.N = [None]*self.J;
+        self.F = [];
+        self.N = [];
 
         self.sig_source = np.empty((self.J, self.Ls));
-        self.phiCorr = [None] * self.J;
+        self.phiCorr = [];
         self.s_im = np.empty((self.I,self.J,self.T));
         self.expectError = np.empty(self.I)
         self.varFreeEnergy = 0;
 
         for j in range(self.J):
-            self.F[j] = int(self.wlen[j]/2);
-            self.N[j] = int(np.round(self.Ls/self.F[j]) - 1);
+            self.F.append(int(self.wlen[j]/2));
+            self.N.append(int(np.round(self.Ls/self.F[j]) - 1));
+            self.phiCorr.append(np.empty((self.F[j], self.La)))
 
-        self.lambda2 = [None]*self.J;
+        self.lambda2 = [];
         for j in range(self.J):
-            self.lambda2[j] = np.dot(self.W[j],self.H[j]);
-
-        #savemat('/cal/exterieurs/atiam6576/Téléchargements/code-SSMM-MASS-2017/data/lambda2.mat', mdict={'lambda2': self.lambda2})
-
+            self.lambda2.append(np.dot(self.W[j],self.H[j]));
 
         #### Initialization of variational parameters
         # V
@@ -88,23 +85,11 @@ class VEM:
         # S
         self.gamma = [];
         self.s_hat = [];
-        # for j in range(self.J):
-        #     gamma_j = invgamma.rvs(self.nu_v, scale=self.beta[j])*self.lambda2[j];
-        #     self.gamma.append(gamma_j);
-        #     s_hat_j = np.random.randn(self.F[j],self.N[j])*np.sqrt(gamma_j);
-        #     self.s_hat.append(s_hat_j);
-
-        # gamma = loadmat('data/gamma.mat');
-        # gamma = gamma['gamma'];
         for j in range(self.J):
-            # self.gamma.append(gamma[j][0])
-            self.gamma.append(0.5*np.ones((self.F[j],self.N[j])))
-
-        # s_hat = loadmat('data/s_hat.mat');
-        # s_hat = s_hat['s_hat'];
-        for j in range(self.J):
-            # self.s_hat.append(s_hat[j][0])
-            self.s_hat.append(0.5*np.ones((self.F[j],self.N[j])))
+            gamma_j = invgamma.rvs(self.nu_v, scale=self.beta[j])*self.lambda2[j];
+            self.gamma.append(gamma_j);
+            s_hat_j = np.random.randn(self.F[j],self.N[j])*np.sqrt(gamma_j);
+            self.s_hat.append(s_hat_j);
 
         # U
         self.nu_u = (self.alpha_u + 1)/2;
@@ -112,43 +97,23 @@ class VEM:
         self.d = np.repeat(d_temp, self.J, axis=1);
 
         # A
-        # self.a_hat = np.zeros((self.I,self.J,self.La));
-        # self.rho = np.zeros((self.I,self.J,self.La));
-        # for i in range(self.I):
-        #     for j in range(self.J):
-        #         rho_ij = invgamma.rvs(self.nu_u[0], scale=self.d[i,j,:])*r2
-        #         self.rho[i,j,:] = rho_ij;
-        #         self.a_hat[i,j] = np.random.randn(self.La)*np.sqrt(rho_ij)
+        self.a_hat = np.zeros((self.I,self.J,self.La));
+        self.rho = np.zeros((self.I,self.J,self.La));
+        for i in range(self.I):
+            for j in range(self.J):
+                rho_ij = invgamma.rvs(self.nu_u[0], scale=self.d[i,j,:])*r2
+                self.rho[i,j,:] = rho_ij;
+                self.a_hat[i,j] = np.random.randn(self.La)*np.sqrt(rho_ij)
 
-        # rho = loadmat('data/rho.mat')
-        # self.rho = rho['rho']
-        # a_hat = loadmat('data/a_hat.mat')
-        # self.a_hat = a_hat['a_hat']
-
-        self.rho = 0.5*np.ones((self.I, self.J, self.La))
-        self.a_hat = 0.5*np.ones((self.I, self.J, self.La))
-
-        self.G = [np.empty((self.F[0], self.wlen[0] + self.La -1, self.I))] *self.J
+        self.G = []
+        for j in range(self.J):
+            self.G.append(np.empty((self.F[j], self.wlen[j] + self.La -1, self.I)))
 
         self.compute_G_simon()
-        self.computePhiCorr();
-        #savemat('/cal/exterieurs/atiam6576/Téléchargements/code-SSMM-MASS-2017/data/phiCorr.mat', mdict={'phiCorr': self.phiCorr})
-
+        self.computePhiCorr()
         self.computeSourceSignal();
-        # print(self.sig_source)
-        savemat('/cal/exterieurs/atiam6576/Téléchargements/code-SSMM-MASS-2017/data/sig_s.mat', mdict={'sig_s': self.sig_source})
-        # #savemat('/cal/exterieurs/atiam6576/Téléchargements/code-SSMM-MASS-2017/data/s_hat.mat', mdict={'s_hat': self.s_hat})
-        # W_init = loadmat('data/s.mat');
-        # s = W_init['s']
-        # self.sig_source = s.T
-        # print(self.sig_source)
         self.computeSourceImageSignal();
-        # savemat('/cal/exterieurs/atiam6576/Téléchargements/code-SSMM-MASS-2017/data/s_im.mat', mdict={'s_im': self.s_im})
-        # W_init = loadmat('data/sim.mat');
-        # sim = W_init['sim'];
-        # self.s_im = sim.T
-        # print(self.s_im)
-        # print(self.s_im.shape)
+
     ## E-V step
     def updateV(self):
         for j in range(self.J):
@@ -167,7 +132,7 @@ class VEM:
     def updateS(self):
 
         ##  Update gamma
-        inv_v_post = [None] * self.J
+        inv_v_post = [np.empty(self.beta[j].shape) for j in range(self.J)]
         for j in range(self.J):
             inv_v_post[j] = self.nu_v/(self.beta[j] + self.eps)
             norm2_g = np.sum(self.G[j]**2, axis=1) # F x I
@@ -180,15 +145,14 @@ class VEM:
         epsilon = self.x - np.sum(self.s_im, axis=1).T
         inv_sigma2_sum_rho = np.sum(1/self.sigma2_n.reshape(-1,1) * np.sum(self.rho, axis=2),axis=0)
 
-        frameInd = [None] * self.J
-        sum_GX = [None] * self.J
-        grad = [None] * self.J
+        frameInd = [np.empty((self.wlen[j] + self.La - 1, self.N[j]), dtype=int) for j in range(self.J)]
+        grad = [np.empty(self.s_hat[j].shape) for j in range(self.J)]
+
         for j in range(self.J):
+
             hop = self.wlen[j]/2
-            frameInd[j] = np.zeros((self.wlen[j] + self.La - 1, self.N[j]), dtype=int)
             for n in range(self.N[j]):
                 frameInd[j][:,n] = n*hop + np.arange(self.wlen[j] + self.La - 1)
-
             epsilonMat = np.zeros((self.I, self.wlen[j] + self.La - 1, self.N[j]))
 
             for i in range(self.I):
@@ -199,12 +163,12 @@ class VEM:
                 - np.sum(np.matmul(self.getGj(j), epsilonMat), axis=0)
 
         # w
-        w = [None] * self.J
+        w = [np.empty(self.gamma[j].shape) for j in range(self.J)]
         for j in range(self.J):
             w[j] = self.gamma[j]*grad[j]
 
-        kappa = [None] * self.J
-        gradP = [None] * self.J
+        kappa = [np.empty(self.gamma[j].shape) for j in range(self.J)]
+        gradP = [np.empty(self.gamma[j].shape) for j in range(self.J)]
 
         niter = 10
         for iter in range(niter):
@@ -226,9 +190,9 @@ class VEM:
                 kappa[j] = w[j]*(inv_v_post[j]/(self.lambda2[j] + self.eps) + inv_sigma2_sum_rho[j]) + np.sum(np.matmul(self.getGj(j),w_filtMat), axis=0)
 
             # comput mu
-            mu = np.matmul(np.asarray(w).flatten().T,np.asarray(grad).flatten())/np.matmul(np.asarray(w).flatten().T,np.asarray(kappa).flatten())
+            #mu = np.matmul(np.asarray(w).flatten().T,np.asarray(grad).flatten())/np.matmul(np.asarray(w).flatten().T,np.asarray(kappa).flatten())
+            mu = np.matmul(list2vec(w).T,list2vec(grad))/np.matmul(list2vec(w).T,list2vec(kappa))
             if mu<0: mu = self.eps
-
 
             # update paramaters
             for j in range(self.J):
@@ -255,7 +219,8 @@ class VEM:
             for j in range(self.J):
                 gradP[j] = self.gamma[j]*grad[j]
             # compute alpha
-            alpha_pcg = - np.matmul(np.asarray(kappa).flatten().T,np.asarray(gradP).flatten())/np.matmul(np.asarray(w).flatten().T,np.asarray(kappa).flatten())
+            # alpha_pcg = - np.matmul(np.asarray(kappa).flatten().T,np.asarray(gradP).flatten())/np.matmul(np.asarray(w).flatten().T,np.asarray(kappa).flatten())
+            alpha_pcg = - np.matmul(list2vec(kappa).T,list2vec(gradP))/np.matmul(list2vec(w).T,list2vec(kappa))
             if alpha_pcg<0: alpha_pcg = self.eps
 
             # compute
@@ -275,7 +240,7 @@ class VEM:
 
         ## compute auxiliary functions
         # autoCorr de S_hat
-        r_ss = [None]*self.J
+        r_ss = [np.empty(self.La) for j in range(self.J)]
         for j in range(self.J):
             r_ss[j] = xcorr(self.sig_source[j,:], self.sig_source[j,:], self.La)
 
@@ -344,11 +309,6 @@ class VEM:
 
                     w_ij = gradP_ij + alpha_pcg*w_ij
 
-                # precondA_hat = np.diag(1/np.diag(lambda_a[i,j,:,:]))
-                #
-                # ## Compute preconditionned conjugate gradient descent
-                # self.a_hat[i,j,:],conv = cg(lambda_a[i,j,:,:], r_se[i,j,:].reshape(-1,1), M=precondA_hat, maxiter=10)
-                # print(self.a_hat[i,j,:])
             # update srcimage
             self.computeSourceImageSignal(j)
 
@@ -359,6 +319,12 @@ class VEM:
     def updateNoiseVar(self):
         self.computeExpectError()
         self.sigma2_n = (1/self.T*self.expectError).flatten()
+
+    ## Alternative noise step
+    def updateNoiseVarAnneal(self, iter, niter, init_val, end_val):
+
+        sig = ((np.sqrt(init_val)*(niter - iter) + np.sqrt(end_val)*iter)/niter)**2
+        self.sigma2_n = sig*np.ones(self.I)
 
     ## M-NMF step
     def updateNMF(self, j, num_iter, b_updW=0):
@@ -393,10 +359,10 @@ class VEM:
 
         return Error
 
-    def updateLambda(self):
+    def updateLambda(self, b_updW):
         num_iter_NMF = 20;
         for j in range(self.J):
-            error = self.updateNMF(j, num_iter_NMF);
+            error = self.updateNMF(j, num_iter_NMF, b_updW);
             self.lambda2[j] = np.dot(self.W[j],self.H[j])
 
     ### Other methods
@@ -404,18 +370,15 @@ class VEM:
 
         for i in range(self.I):
             norm_x_y = np.sum((self.x[:,i] - np.sum(self.s_im[i,:,:], axis=0))**2)
-            print(self.s_im[i,:,:])
             norm_s_rho = np.sum(np.sum(self.sig_source**2, axis=1)*np.sum(self.rho[i,:,:], axis=1))
-            print(self.sig_source)
             tmp = np.zeros(self.J);
-
             for j in range(self.J):
                 normG = np.sum(self.G[j][:,:,i]**2, axis=1)
                 tmp_val= (normG + np.sum(self.rho[i,j,:])).reshape(-1,1)
                 tmp[j] = np.sum(np.sum(self.gamma[j] * tmp_val));
             sum_gamma_g_rho = np.sum(tmp)
+
             self.expectError[i] = norm_x_y + norm_s_rho + sum_gamma_g_rho
-            print(self.expectError[i])
 
     def computeVFE(self):
 
@@ -444,20 +407,6 @@ class VEM:
         print(likelihood_term, s_term, v_term, a_term, u_term)
         self.varFreeEnergy = likelihood_term + s_term + v_term + a_term + u_term
 
-    def compute_g_ijfn(self, i, j, f, n):
-        philen = self.wlen[0]
-        phi_fn = self.getMDCTAtom(f, n, philen, self.wlen[0]).reshape(1,-1)
-        a_ij = self.a_hat[i,j,:]
-        if type(i) == int:
-            g_ijfn = convFFT(phi_fn, a_ij)
-        else:
-            g_ijfn = convFFT(np.dot(np.ones((len(i),1)),phi_fn),a_ij, axis=1)
-        # n_0 = n*self.wlen[0]/2
-        # g_ijfn = g_ijfn[n_0:n_0 + self.wlen[0] + self.La -1]
-        print(np.mean(g_ijfn))
-
-        return g_ijfn
-
     def compute_G(self):
         # for i in range(self.I):
         k = 0
@@ -473,11 +422,11 @@ class VEM:
             a_sq = self.a_hat[:,j,:].T
             for f in range(self.F[j]):
                 phi_f = win*np.sqrt(2/self.F[j])*np.cos((f + 0.5)*(np.arange(self.wlen[j]) + 0.5 + self.wlen[j]/4)*2*np.pi/self.wlen[j])
-                self.G[j][f,:,:] = convFFT(np.dot(phi_f.T.reshape(-1,1), np.ones((1,self.I))), a_sq)
+                temp = convFFT(np.dot(phi_f.T.reshape(-1,1), np.ones((1,self.I))), a_sq)
+                self.G[j][f,:,:] = temp
 
     def getGj(self,j):
-        ## To change when wlen[j] != wlen[j-1]
-        # Gj = self.G[:,j*self.F[j]:j*self.F[j] + self.F[j],:]
+
         Gj = self.G[j].transpose(2,0,1) # [ I x F x wlen + La - 1 ]
 
         return Gj
@@ -536,3 +485,12 @@ class VEM:
         phi[frameInd] = win*(np.sqrt(2/F)*np.cos((f + 0.5)*(np.arange(wlen) + 0.5 +wlen/4)*2*np.pi/wlen))
 
         return phi
+
+def list2vec(x):
+
+    list_length = len(x)
+    out = x[0].flatten()
+    for j in np.arange(1,list_length):
+        out = np.concatenate((x[j].flatten(),out))
+
+    return out

@@ -17,10 +17,8 @@ x = 0.99*x/np.max(x);
 # General paramete
 [T, I] = x.shape;
 J = 3; # number of sources
-sigma2_n = (np.sum(np.abs(x)**2,0)/T).flatten(); # noise variance
-sigma = loadmat('data/sigma.mat')
-sigma = sigma['sigma2_init']
-sigma2_n = sigma.flatten()
+b_noiseAnnealing = True # noise update strategy
+b_updW = 1 # update W (1) or not (0)
 
 # Mixing parameters
 T60 = 0.360; # temps de reverb en s
@@ -31,88 +29,86 @@ t = np.arange(La); # timeline in s of a mixing filter
 r2 = 0.1**2*np.exp(-2*t/tau); # incomplete variance of mixing filter coefficients
 
 # Source parameters
-Ls = T - La + 1; # length of source signal
-alpha_v = 100; # Student's t shape source parameter
-wlen = [2048, 2048, 2048]; # window lengths for MDCT [drums, voice, bass]
-K = 10; # NMF rank
-num_iter = 200; # number of iteSettingsration for NMF optimization
-W = []; # spectral templates
-H = [np.ones((10,35))] * J; # activation matrices
+Ls = T - La + 1 # length of source signal
+alpha_v = 100 # Student's t shape source parameter
+wlen = [512, 2048, 2048] # window lengths for MDCT [drums, voice, bass]
+K = 10 # NMF rank
+num_iter = 20 # number of iteSettingsration for NMF optimization
+W = [] # spectral templates
+H = [] # activation matrices
 
 ## Zero padding do handle edges
 hop = wlen[0]/2.
 xpad = zeroPad(x, Ls, hop)
 
-
-# for j in range(J):
-#     filename = 'sounds/shorter_files/src' + str(j+1) + '.wav';
-#     _, s = wav.read(filename);
-#     s = s.reshape((len(s),-1))
-#     s = zeroPad(s, Ls, hop)
-#     S = mdct(s, wlen[j]);
-#     # plt.imshow(np.abs(S)**2, aspect='auto', interpolation='None')
-#     # plt.show()
-#
-#     [F,N] = S.shape;
-#     W_init = 0.5*(np.abs(np.random.randn(F,K) + np.ones((F,K)))*np.dot(np.mean(np.abs(S)**2, axis=1).reshape((-1,1)),np.ones((1,K))))
-#     H_init = 0.5*(np.abs(np.random.randn(K,N) + np.ones((K,N))));
-#     H_init = 0.5*np.ones((K,N))
-#     W_init = 0.5*np.ones((F,K))
-#     Wj,Hj,_ = nmf_mdct(np.abs(S)**2, alpha_v, W_init, H_init, num_iter)
-#
-#     #Hj = H_init*2
-#     WH = np.dot(Wj,Hj)
-#     savemat('/cal/exterieurs/atiam6576/Téléchargements/code-SSMM-MASS-2017/data/WH' + str(j) + '.mat', mdict={'WH': WH})
-#
-#     # plt.imshow(Wj/np.max(Wj), aspect='auto', interpolation='none')
-#     # plt.colorbar()
-#     # plt.show()
-#     W.append(Wj);
-#     H.append(Hj); # H matrices will be estimated blindly
+# Noise annealing scheduling
+if b_noiseAnnealing:
+    sigma2_beg = 0.01
+    sigma2_end = 0.000001
+    sigma2_init = sigma2_beg*np.ones(I)
+else:
+    sigma2_int = (np.sum(np.abs(x)**2,0)/T).flatten(); # noise variance
 
 
-W_init = loadmat('data/W.mat');
-W_init = W_init['W_init'];
+
 for j in range(J):
-    W.append(W_init[j][0])
+    filename = 'sounds/shorter_files/src' + str(j+1) + '.wav';
+    _, s = wav.read(filename);
+    s = s.reshape((len(s),-1))
+    s = zeroPad(s, Ls, hop)
+    S = mdct(s, wlen[j]);
+
+    [F,N] = S.shape;
+    H.append(np.ones((K,N)));
+    W_init = 0.5*(np.abs(np.random.randn(F,K) + np.ones((F,K)))*np.dot(np.mean(np.abs(S)**2, axis=1).reshape((-1,1)),np.ones((1,K))))
+    H_init = 0.5*(np.abs(np.random.randn(K,N) + np.ones((K,N))));
+
+    Wj,Hj,_ = nmf_mdct(np.abs(S)**2, alpha_v, W_init, H_init, num_iter)
+
+    WH = np.dot(Wj,Hj)
+
+    W.append(Wj);
 
 
-niter = 200
+niter = 25
 varFreeEnergy = np.zeros(niter + 1)
 print('Initialization of VEM algorithm...')
-init = VEM(fs, xpad, alpha_u, alpha_v, sigma2_n, r2, W, H, wlen);
-init.computeVFE()
-print('VFE : ',init.varFreeEnergy/(init.T*init.I))
-varFreeEnergy[0] = init.varFreeEnergy/(init.T*init.I)
+ss_VEM = VEM(fs, xpad, alpha_u, alpha_v, sigma2_init, r2, W, H, wlen);
+ss_VEM.computeVFE()
+print('VFE : ',ss_VEM.varFreeEnergy/(ss_VEM.T*ss_VEM.I))
+varFreeEnergy[0] = ss_VEM.varFreeEnergy/(ss_VEM.T*ss_VEM.I)
 
 for n in range(niter):
     print('VEM iteration ', n,' of ', niter)
 
     print('E-V step..')
-    init.updateV()
+    ss_VEM.updateV()
 
     print('E-S step..')
-    init.updateS()
+    ss_VEM.updateS()
 
     print('E-U step..')
-    init.updateU()
+    ss_VEM.updateU()
 
-    # print('E-A step..')
-    # init.updateA()
+    print('E-A step..')
+    ss_VEM.updateA()
 
     print('M-NMF step..')
-    init.updateLambda()
+    ss_VEM.updateLambda(b_updW)
 
     print('M-noise step..')
-    init.updateNoiseVar()
+    if b_noiseAnnealing:
+        ss_VEM.updateNoiseVarAnneal(n,niter, sigma2_beg, sigma2_end)
+    else:
+        ss_VEM.updateNoiseVar()
 
-    init.computeVFE()
-    varFreeEnergy[n + 1] = init.varFreeEnergy/(init.T*init.I)
-    print('VFE : ',init.varFreeEnergy/(init.T*init.I))
+    ss_VEM.computeVFE()
+    varFreeEnergy[n + 1] = ss_VEM.varFreeEnergy/(ss_VEM.T*ss_VEM.I)
+    print('VFE : ',ss_VEM.varFreeEnergy/(ss_VEM.T*ss_VEM.I))
 
     if np.mod(n,10) == 0:
         for j in range(J):
-            wav.write('sounds/shorter_files/results/res_source_' + str(n + 1) + '_' + str(j+1) + '.wav', fs, init.sig_source[j,:])
+            wav.write('sounds/shorter_files/results/res_source_' + str(n + 1) + '_' + str(j+1) + '.wav', fs, ss_VEM.sig_source[j,:])
 plt.plot(varFreeEnergy)
 plt.show()
 
